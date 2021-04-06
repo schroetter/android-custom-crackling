@@ -1,0 +1,145 @@
+#!/sbin/sh
+##################################
+# Shell Script EDIFY Replacement #
+# osm0sis <osm0sis@outlook.com>  #
+##################################
+
+ZIPFILE="$3";
+DIR=$(dirname "$ZIPFILE");
+OUTFD=/proc/self/fd/$2;
+
+# ui_print "<message>" ["<message 2>" ...]
+ui_print()
+{
+	while [ "$1" ]
+	do
+		echo -e "ui_print $1\nui_print" >> $OUTFD;
+		shift;
+	done;
+}
+
+# package_extract_dir <dir> <destination_dir>
+package_extract_dir()
+{
+	local entry outfile;
+	for entry in $(unzip -l "$ZIPFILE" 2>/dev/null | tail -n+4 | grep -v '/$' | grep -o " $1.*$" | cut -c2-)
+	do
+		outfile="$(echo "$entry" | sed "s|${1}|${2}|")";
+		mkdir -p "$(dirname "$outfile")";
+		unzip -o "$ZIPFILE" "$entry" -p > "$outfile";
+	done;
+}
+
+# set_metadata <file> <uid|gid|mode|capabilities|selabel> <value> [<uid|gid|mode|capabilities|selabel_2> <value2> ...]
+set_metadata()
+{
+	local file i;
+	file="$1";
+	shift;
+
+	while [ "$2" ]
+	do
+		case "$1" in
+			uid)
+				chown "$2" "$file"
+				;;
+
+			gid)
+				chown ":$2" "$file"
+				;;
+
+			mode)
+				chmod "$2" "$file"
+				;;
+
+			capabilities)
+				twrp setcap "$file" "$2"
+				;;
+
+			selabel)
+				for i in /system/bin/toybox /system/toolbox /system/bin/toolbox
+				do
+					(LD_LIBRARY_PATH=/system/lib "$i" chcon -h "$2" "$file" || LD_LIBRARY_PATH=/system/lib "$i" chcon "$2" "$file") 2>/dev/null;
+				done || chcon -h "$2" "$file" || chcon "$2" "$file";
+				;;
+		esac;
+
+		shift 2;
+	done;
+}
+
+####################################
+# Personal stuff for Wilefox Swift #
+# Christian Schrötter <cs@fnx.li>  #
+####################################
+
+SETTINGSFILE="/data/system/users/0/settings_global.xml"
+CONNECTIVITYCHECK="connectivitycheck.schroetter.co.at"
+
+escapeSlashes()
+{
+	printf '%s' "$1" | sed 's#/#\\/#g'
+}
+
+getNextGlobalSettingsID()
+{
+	local id=0
+
+	if [ ! -z "$SETTINGSFILE" ]
+	then
+		id=`grep '^[[:space:]]*<setting' "$SETTINGSFILE" | grep -o 'id="[[:digit:]]*"' | cut -d '"' -f 2 | sort -n | tail -n 1`
+	fi
+
+	echo "$((id+1))"
+}
+
+updateGlobalSetting()
+{
+	if [ ! -z "$SETTINGSFILE" ]
+	then
+		local id=`getNextGlobalSettingsID`
+		local value=`escapeSlashes "$2"`
+
+		if grep -qF 'name="'"$1"'"' "$SETTINGSFILE"
+		then
+			sed -i 's/\(name="'"$1"'"\).*value="[^"]*"/\1 value="'"$value"'"/' "$SETTINGSFILE"
+		else
+			sed -i 's/\(<\/settings>\)/  <setting id="'"$id"'" name="'"$1"'" value="'"$value"'" package="root" \/>\n\1/' "$SETTINGSFILE"
+		fi
+	fi
+}
+
+ui_print "Installing data files..."
+package_extract_dir "data" "/data"
+set_metadata "/data/local/afwall.sh" uid "0" gid "0" mode "0600"
+set_metadata "/data/local/gps.conf" uid "0" gid "0" mode "0644"
+
+ui_print "Mounting system partition..."
+mount | grep -q " /system " || mount "/system"
+
+ui_print "Installing system files..."
+package_extract_dir "system" "/system"
+set_metadata "/system/addon.d/99-schroetter.sh" uid "0" gid "0" mode "0755" selabel "u:object_r:system_file:s0"
+
+ui_print "Executing addon.d script..."
+/system/addon.d/99-schroetter.sh "backup"
+/system/addon.d/99-schroetter.sh "restore"
+
+if [ -f "$SETTINGSFILE" ]
+then
+	ui_print "Patching global settings file..."
+	cp -pf "$SETTINGSFILE" "$SETTINGSFILE.bkp"
+
+	updateGlobalSetting "captive_portal_http_url" "http://$CONNECTIVITYCHECK"
+	updateGlobalSetting "captive_portal_https_url" "https://$CONNECTIVITYCHECK"
+	updateGlobalSetting "captive_portal_fallback_url" "http://$CONNECTIVITYCHECK"
+	updateGlobalSetting "captive_portal_other_fallback_urls" "http://$CONNECTIVITYCHECK"
+else
+	ui_print "Global settings file not found. Skipping!"
+fi
+
+ui_print "Unmounting system partition..."
+umount "/system"
+
+ui_print "Done! Your device is bricked ;-)"
+ui_print "Joke. Or not? We'll see. Please reboot."
