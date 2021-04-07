@@ -4,42 +4,43 @@
 # osm0sis <osm0sis@outlook.com>  #
 ##################################
 
-ZIPFILE="$3";
-DIR=$(dirname "$ZIPFILE");
-OUTFD=/proc/self/fd/$2;
+OUTFD=/proc/self/fd/$2
+ZIPFILE="$3"
 
 # ui_print "<message>" ["<message 2>" ...]
 ui_print()
 {
 	while [ "$1" ]
 	do
-		echo -e "ui_print $1\nui_print" >> $OUTFD;
-		shift;
-	done;
+		echo "ui_print $1" >> "$OUTFD"
+		echo "ui_print" >> "$OUTFD"
+		shift
+	done
 }
 
 # package_extract_dir <dir> <destination_dir>
 package_extract_dir()
 {
-	local entry outfile;
+	entry outfile
+
 	for entry in $(unzip -l "$ZIPFILE" 2>/dev/null | tail -n+4 | grep -v '/$' | grep -o " $1.*$" | cut -c2-)
 	do
-		outfile="$(echo "$entry" | sed "s|${1}|${2}|")";
-		mkdir -p "$(dirname "$outfile")";
-		unzip -o "$ZIPFILE" "$entry" -p > "$outfile";
-	done;
+		outfile="$(echo "$entry" | sed "s|${1}|${2}|")"
+		mkdir -p "$(dirname "$outfile")"
+		unzip -o "$ZIPFILE" "$entry" -p > "$outfile"
+	done
 }
 
 # set_metadata <file> <uid|gid|mode|capabilities|selabel> <value> [<uid|gid|mode|capabilities|selabel_2> <value2> ...]
 set_metadata()
 {
-	local file i;
-	file="$1";
-	shift;
+	file="$1"
+	shift
 
 	while [ "$2" ]
 	do
-		case "$1" in
+		case "$1"
+		in
 			uid)
 				chown "$2" "$file"
 				;;
@@ -59,13 +60,13 @@ set_metadata()
 			selabel)
 				for i in /system/bin/toybox /system/toolbox /system/bin/toolbox
 				do
-					(LD_LIBRARY_PATH=/system/lib "$i" chcon -h "$2" "$file" || LD_LIBRARY_PATH=/system/lib "$i" chcon "$2" "$file") 2>/dev/null;
-				done || chcon -h "$2" "$file" || chcon "$2" "$file";
+					(LD_LIBRARY_PATH=/system/lib "$i" chcon -h "$2" "$file" || LD_LIBRARY_PATH=/system/lib "$i" chcon "$2" "$file") 2>/dev/null
+				done || chcon -h "$2" "$file" || chcon "$2" "$file"
 				;;
-		esac;
+		esac
 
-		shift 2;
-	done;
+		shift 2
+	done
 }
 
 ####################################
@@ -73,7 +74,7 @@ set_metadata()
 # Christian Schrötter <cs@fnx.li>  #
 ####################################
 
-SETTINGSFILE="/data/system/users/0/settings_global.xml"
+GLOBALSETTINGS="/data/system/users/0/settings_global.xml"
 CONNECTIVITYCHECK="connectivitycheck.schroetter.co.at"
 
 escapeSlashes()
@@ -81,30 +82,31 @@ escapeSlashes()
 	printf '%s' "$1" | sed 's#/#\\/#g'
 }
 
-getNextGlobalSettingsID()
+getNextSettingsID()
 {
-	local id=0
+	id=0
 
-	if [ ! -z "$SETTINGSFILE" ]
+	if [ ! -z "$1" ]
 	then
-		id=`grep '^[[:space:]]*<setting' "$SETTINGSFILE" | grep -o 'id="[[:digit:]]*"' | cut -d '"' -f 2 | sort -n | tail -n 1`
+		id=$(grep '^[[:space:]]*<setting' "$1" | grep -o 'id="[[:digit:]]*"' | cut -d '"' -f 2 | sort -n | tail -n 1)
 	fi
 
 	echo "$((id+1))"
 }
 
-updateGlobalSetting()
+putSettingsValue()
 {
-	if [ ! -z "$SETTINGSFILE" ]
+	if [ ! -z "$1" ]
 	then
-		local id=`getNextGlobalSettingsID`
-		local value=`escapeSlashes "$2"`
+		id=$(getNextSettingsID "$1")
+		value=$(escapeSlashes "$3")
+		name="$2"
 
-		if grep -qF 'name="'"$1"'"' "$SETTINGSFILE"
+		if grep -qF 'name="'"$name"'"' "$1"
 		then
-			sed -i 's/\(name="'"$1"'"\).*value="[^"]*"/\1 value="'"$value"'"/' "$SETTINGSFILE"
+			sed -i 's/\(name="'"$name"'"\).*value="[^"]*"/\1 value="'"$value"'"/' "$1"
 		else
-			sed -i 's/\(<\/settings>\)/  <setting id="'"$id"'" name="'"$1"'" value="'"$value"'" package="root" \/>\n\1/' "$SETTINGSFILE"
+			sed -i 's/\(<\/settings>\)/  <setting id="'"$id"'" name="'"$name"'" value="'"$value"'" package="root" \/>\n\1/' "$1"
 		fi
 	fi
 }
@@ -125,15 +127,15 @@ ui_print "Executing addon.d script..."
 /system/addon.d/99-schroetter.sh "backup"
 /system/addon.d/99-schroetter.sh "restore"
 
-if [ -f "$SETTINGSFILE" ]
+if [ -f "$GLOBALSETTINGS" ]
 then
 	ui_print "Patching global settings file..."
-	cp -pf "$SETTINGSFILE" "$SETTINGSFILE.bkp"
+	cp -pf "$GLOBALSETTINGS" "$GLOBALSETTINGS.bkp"
 
-	updateGlobalSetting "captive_portal_http_url" "http://$CONNECTIVITYCHECK"
-	updateGlobalSetting "captive_portal_https_url" "https://$CONNECTIVITYCHECK"
-	updateGlobalSetting "captive_portal_fallback_url" "http://$CONNECTIVITYCHECK"
-	updateGlobalSetting "captive_portal_other_fallback_urls" "http://$CONNECTIVITYCHECK"
+	putSettingsValue "$GLOBALSETTINGS" "captive_portal_http_url" "http://$CONNECTIVITYCHECK"
+	putSettingsValue "$GLOBALSETTINGS" "captive_portal_https_url" "https://$CONNECTIVITYCHECK"
+	putSettingsValue "$GLOBALSETTINGS" "captive_portal_fallback_url" "http://$CONNECTIVITYCHECK"
+	putSettingsValue "$GLOBALSETTINGS" "captive_portal_other_fallback_urls" "http://$CONNECTIVITYCHECK"
 else
 	ui_print "Global settings file not found. Skipping!"
 fi
@@ -141,5 +143,5 @@ fi
 ui_print "Unmounting system partition..."
 umount "/system"
 
-ui_print "Done! Your device is bricked ;-)"
+ui_print "Done! Your device is bricked now ;-)"
 ui_print "Joke. Or not? We'll see. Please reboot."
