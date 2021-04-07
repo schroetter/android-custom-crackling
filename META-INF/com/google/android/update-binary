@@ -74,6 +74,7 @@ set_metadata()
 # Christian Schrötter <cs@fnx.li>  #
 ####################################
 
+SECURESETTINGS="/data/system/users/0/settings_secure.xml"
 GLOBALSETTINGS="/data/system/users/0/settings_global.xml"
 CONNECTIVITYCHECK="connectivitycheck.schroetter.co.at"
 
@@ -126,6 +127,34 @@ set_metadata "/system/addon.d/99-schroetter.sh" uid "0" gid "0" mode "0755" sela
 ui_print "Executing addon.d script..."
 /system/addon.d/99-schroetter.sh "backup"
 /system/addon.d/99-schroetter.sh "restore"
+
+if [ -f "$SECURESETTINGS" ]
+then
+	ui_print "Patching secure settings file..."
+	cp -pf "$SECURESETTINGS" "$SECURESETTINGS.bkp"
+	line=$(grep -F 'name="icon_blacklist"' "$SECURESETTINGS")
+
+	if [ ! -z "$line" ]
+	then
+		if echo "$line" | grep -o 'value="[^"]*"' | cut -d '"' -f 2 | grep '\(^\|,\)su\(,\|$\)'
+		then
+			ui_print "Secure settings file already patched. Skipping!"
+		else
+			if echo "$line" | grep -F 'value="'
+			then
+				ui_print "Patching secure settings file: value=su (PREPEND)"
+				sed -i 's/\(name="icon_blacklist".*\) value="\([^"]*\)"/\1 value="su,\2"/' "$SECURESETTINGS"
+			else
+				ui_print "Patching secure settings file: value=su (INSERT)"
+				sed -i 's/\(name="icon_blacklist"\)/\1 value="su"/' "$SECURESETTINGS"
+			fi
+		fi
+	else
+		ui_print "Could not patch secure settings file!"
+	fi
+else
+	ui_print "Secure settings file not found. Skipping!"
+fi
 
 if [ -f "$GLOBALSETTINGS" ]
 then
