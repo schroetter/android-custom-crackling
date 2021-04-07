@@ -6,12 +6,11 @@ Tested with TWRP 3.1/3.5 and LineageOS 14.1/16.0.
 **DON'T USE THIS ZIP FILE! YOU'VE BEEN WARNED.**
 
 # What's included?
-* Custom captive portal check URLs
-* Hide root indicator icon at status bar
+* Hide root indicator icon at status bar (`icon_blacklist`)
+* Custom captive portal check URLs (`captive_portal_*_url*`)
 * Custom AFWall+ script (with built-in include of another local script)
-* Custom `gps.conf` (with `gps_debug.conf` hack) for alternative XTRA download URLs
-
-All features are upgrade-safe! (addon.d support)
+* Custom `gps.conf` for alternative XTRA download URLs
+* `gps_debug.conf` hack (upgrade-safe symlink)
 
 ## AFWall+
 Setup the script at AFWall+ as custom script: 
