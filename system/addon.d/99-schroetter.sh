@@ -1,13 +1,31 @@
 #!/sbin/sh
-case "$1"
-in
-	backup)
-		cp -pf "/system/etc/gps_debug.conf" "/system/etc/gps_debug.bkp"
-		rm -f "/system/etc/gps_debug.conf"
-		;;
+#
+# ADDOND_VERSION=2
+#
+# /system/addon.d/99-schroetter.sh
+#
 
-	restore)
-		rm -f "/system/etc/gps_debug.conf"
-		ln -s "/data/local/gps.conf" "/system/etc/gps_debug.conf"
-		;;
+. /tmp/backuptool.functions
+
+list_files() {
+cat <<EOF
+etc/gps_debug.conf
+etc/afwall.sh
+EOF
+}
+
+case "$1" in
+  backup)
+    list_files | while read FILE DUMMY; do
+      backup_file $S/"$FILE"
+    done
+  ;;
+  restore)
+    list_files | while read FILE REPLACEMENT; do
+      R=""
+      [ -L "$S/$FILE" ] && rm -f "$S/$FILE"
+      [ -n "$REPLACEMENT" ] && R="$S/$REPLACEMENT"
+      [ -f "$C/$S/$FILE" ] && restore_file "$S/$FILE" "$R"
+    done
+  ;;
 esac
